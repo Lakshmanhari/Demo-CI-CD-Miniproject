@@ -1,0 +1,293 @@
+# 🚀 End-to-End Jenkins CI/CD Pipeline with Docker, Docker Hub & Kubernetes (kind)
+
+This project demonstrates a **complete CI/CD pipeline** using **Jenkins**, **Docker**, **Docker Hub**, and **Kubernetes (kind)** deployed on **AWS EC2 instances**.
+
+The pipeline automatically builds a Docker image, pushes it to Docker Hub, and deploys the application into a Kubernetes cluster.
+
+---
+
+## 📌 Project Architecture Overview
+
+                    ┌────────────────────┐
+                    │      Developer      │
+                    │   Pushes code to    │
+                    │       GitHub        │
+                    └─────────┬──────────┘
+                              │
+                              ▼
+                    ┌────────────────────┐
+                    │  Jenkins Controller │
+                    │   (EC2 Instance)   │
+                    │                    │
+                    │  - Pipeline logic  │
+                    │  - Git pull        │
+                    │  - Sends job via   │
+                    │    SSH to agent    │
+                    └─────────┬──────────┘
+                              │ SSH
+                              ▼
+                ┌────────────────────────────┐
+                │   Jenkins Agent (Worker)   │
+                │        EC2 Instance        │
+                │                            │
+                │  1. Pull source code       │
+                │  2. Build Docker image     │
+                │  3. Push to Docker Hub     │
+                │  4. Deploy to Kubernetes   │
+                └─────────┬──────────────────┘
+                          │
+                          ▼
+                ┌────────────────────────────┐
+                │        Docker Engine       │
+                │     (Installed on EC2)     │
+                │                            │
+                │  - Builds images           │
+                │  - Runs containers         │
+                └─────────┬──────────────────┘
+                          │
+                          ▼
+            ┌──────────────────────────────────┐
+            │        kind (Kubernetes)         │
+            │   Kubernetes running in Docker   │
+            │                                  │
+            │  ┌────────────────────────────┐  │
+            │  │ Kubernetes Control Plane   │  │
+            │  │ (as Docker containers)     │  │
+            │  └────────────┬───────────────┘  │
+            │               │                  │
+            │  ┌────────────▼───────────────┐ │
+            │  │ Kubernetes Worker Node     │ │
+            │  │ (as Docker container)      │ │
+            │  │                             │ │
+            │  │   ┌─────────────────────┐   │ │
+            │  │   │   Application Pod   │   │ │
+            │  │   │                     │   │ │
+            │  │   │  App Container      │   │ │
+            │  │   │  (Python app)       │   │ │
+            │  │   └─────────┬──────────┘   │ │
+            │  └─────────────┼──────────────┘ │
+            └────────────────┼────────────────┘
+                             │
+                             ▼
+                  ┌───────────────────┐
+                  │ Kubernetes Service │
+                  │   NodePort:30007   │
+                  └─────────┬─────────┘
+                            │
+                            ▼
+                 http://EC2-Worker-IP:30007
+                            │
+                            ▼
+                       End User
+Inside–Outside View (Machine Level)
+
+This is what exists inside the worker EC2:
+
+EC2 Worker Machine (Ubuntu OS)
+│
+├── Docker Engine
+│
+│   ├── kind-control-plane (container)
+│   │     └── Kubernetes control plane
+│   │
+│   ├── kind-worker (container)
+│   │     └── Kubernetes worker node
+│   │           └── Pod
+│   │                └── App container
+│   │                     └── Python app running
+│   │
+│   └── Other Docker images
+│
+└── System tools (kubectl, kind, etc.)
+
+
+---
+
+## 🧠 Core Concept (Very Important)
+
+> **Docker builds the image outside the Kubernetes cluster.**  
+> **Kubernetes only pulls and runs the image inside the cluster.**
+
+---
+
+## 🛠️ Technologies Used
+
+| Tool | Purpose |
+|----|--------|
+| AWS EC2 | Jenkins controller & agent |
+| Jenkins | CI/CD automation |
+| Docker | Image build & container runtime |
+| Docker Hub | Image registry |
+| Kubernetes (kind) | Container orchestration |
+| GitHub | Source code repository |
+
+---
+
+## 🖥️ Infrastructure Setup
+
+### EC2 Instances
+- **Jenkins Controller EC2**
+- **Jenkins Agent / Worker EC2**
+
+---
+
+## 🔌 Jenkins Plugins Used
+
+- Pipeline
+- Git
+- GitHub Integration
+- SSH Agent
+- Docker Pipeline
+- Credentials Binding
+
+---
+
+## 🔑 Credentials Configuration
+
+### Jenkins Credentials
+- **SSH Credential**
+  - ID: `jenkins-agent-key`
+  - Used for controller → agent communication
+
+- **Docker Hub Credential**
+  - ID: `dockerhub-creds`
+  - Used to push Docker images
+
+---
+
+## ⚙️ Worker Node Setup
+
+### Install Java
+```bash
+sudo apt update
+sudo apt install fontconfig openjdk-21-jre
+java -version
+
+Install Python
+sudo apt install -y python3 python3-pip python3-venv python3-full
+
+Install Docker
+sudo apt install -y docker.io
+sudo usermod -aG docker ubuntu
+sudo systemctl start docker
+sudo systemctl enable docker
+
+☸️ Kubernetes Setup using kind
+Install kubectl
+curl -LO https://storage.googleapis.com/kubernetes-release/release/$(curl -s \
+https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/amd64/kubectl
+chmod +x kubectl
+sudo mv kubectl /usr/local/bin/
+
+Install kind
+curl -Lo kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
+chmod +x kind
+sudo mv kind /usr/local/bin/kind
+
+kind Cluster Configuration
+apiVersion: kind.x-k8s.io/v1alpha4
+kind: Cluster
+nodes:
+- role: control-plane
+  extraPortMappings:
+  - containerPort: 30007
+    hostPort: 30007
+    protocol: TCP
+
+Create Cluster
+kind create cluster --config kind-config.yaml
+kubectl get nodes
+
+📦 Components Inside Kubernetes Cluster
+Kubernetes Cluster (kind)
+│
+├── Control Plane
+│     ├── kube-apiserver
+│     ├── kube-scheduler
+│     ├── kube-controller-manager
+│     └── etcd
+│
+├── Worker Node
+│     ├── kubelet
+│     ├── kube-proxy
+│     └── Container Runtime (Docker/containerd)
+│
+├── Pod
+│     └── Application Container
+│           └── Python Application
+│
+└── Service
+      └── NodePort (30007)
+
+🔁 CI/CD Pipeline Workflow
+1. Developer pushes code to GitHub
+2. Jenkins pipeline triggers automatically
+3. Jenkins Controller sends job to Agent via SSH
+4. Docker image is built on Agent EC2
+5. Image is pushed to Docker Hub
+6. Kubernetes deployment is applied
+7. Pod is created inside the cluster
+8. Application is exposed via NodePort
+
+🚦 Application Runtime Flow
+Browser
+  ↓
+EC2 Public IP : 30007
+  ↓
+Kubernetes NodePort Service
+  ↓
+Pod
+  ↓
+Container
+  ↓
+Application
+
+🔍 Verification Commands
+kubectl get nodes
+kubectl get pods
+kubectl get svc
+kubectl get pods -n kube-system
+
+🌐 Application Access
+http://<EC2-WORKER-PUBLIC-IP>:30007
+
+
+Ensure port 30007 is allowed in the EC2 Security Group.
+
+🧪 CI vs CD in This Project
+Continuous Integration (CI)
+
+Source code pull
+
+Docker image build
+
+Image push to Docker Hub
+
+Continuous Deployment (CD)
+
+Image pull by Kubernetes
+
+Pod creation
+
+Application deployment
+
+🎯 Key Takeaways
+
+Docker builds images outside Kubernetes
+
+Kubernetes manages and runs containers
+
+Jenkins automates the entire pipeline
+
+kind is used for lightweight Kubernetes testing
+
+📌 Interview One-Liner
+
+“In this project, Jenkins builds Docker images on the agent EC2, pushes them to Docker Hub, and Kubernetes (kind) pulls and deploys the image as pods exposed using a NodePort service.”
+
+✅ Project Status
+
+✔ CI/CD Pipeline Implemented
+✔ Dockerized Application
+✔ Kubernetes Deployment
+✔ Application Accessible
